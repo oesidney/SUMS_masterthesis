@@ -22,8 +22,8 @@ parser = argparse.ArgumentParser(
     description='Figure it out'
 )
 
-parser.add_argument('start', type=int, help='Start index (integer)')
-parser.add_argument('end', type=int, help='End index (integer)')
+parser.add_argument('start', type=int)
+parser.add_argument('end', type=int)
 
 args = parser.parse_args()
 
@@ -31,12 +31,12 @@ start = args.start
 end = args.end
 
 #opening data and a file with the names of the right columns
-atlas = Table.read("/home/r0937090/SUMS_imput/exEMU_ATLAS2.fits")
+atlas = Table.read("/home/r0937090/SUMS_imput/exEMU_ATLAS2.fits") # basically just a list of bands and wavelengths
 dt = Table.read("/home/r0937090/SUMS_imput/BOSSA_AB.fits")
 wav=atlas['wavelength'].data
 nam=atlas['name'].tolist()
 enam=[]
-for a in atlas['name']:
+for a in atlas['name']:   # error_names
     enam.append('e_'+a)
 inst = np.array(atlas['instrument'].data).astype(str)
 def SEDinit(dt, inter):
@@ -48,18 +48,12 @@ def SEDinit(dt, inter):
     magvals = mags[valid]
     wavvals = wav_arr[valid]
     errmag = errs[valid]
-    filter_idx = np.where(valid)[0]
 
-    return np.asarray(wavvals, dtype=float), np.asarray(magvals, dtype=float), np.asarray(errmag), filter_idx
+    return np.asarray(wavvals, dtype=float), np.asarray(magvals, dtype=float), np.asarray(errmag)
 
 #Constants
 X0 = 4.0 # Intercept of the mean linear model
 NU = 2.0 # Degrees of freedom for the t-student
-#h=6.6e-34
-#k=1.38e-23  => C2
-#c=3e8
-C2 = 1.438776877e-2
-#blackbody model
 class Matern32Linear:
     names = ("sigma", "scale", "m0", "logT")
     @staticmethod
@@ -121,6 +115,7 @@ def fit_mcmc(x, y, yerr, nu=3.0, fixed=None, spec=Matern32Linear, warmup=1000, s
 # GP to imputed data
 def MCMC_single(x,y,e, not_x):
     mcmc = fit_mcmc(x, y, e, spec=Matern32Linear, nu=NU, warmup=300, samples=800)
+    #getting GPvariables
     idata = az.from_numpyro(mcmc)
     summary = az.summary(idata,var_names=["sigma", "scale", "m0", "logT"])
     GPvar = {}
@@ -138,7 +133,7 @@ def MCMC_single(x,y,e, not_x):
         }
     x_all = np.sort(np.concatenate([x, not_x]))
     curves = mcmc_predict(mcmc, x_all) #impute x
-    mask_imputation=(not_x<np.max(x)) & (not_x>np.min(x))
+    mask_imputation=(not_x<np.max(x)) & (not_x>np.min(x)) # no extrapolation
     imput=curves[:, np.isin(x_all, not_x[mask_imputation])]
     yim, e_yim= np.median(imput, axis=0), np.std(imput, axis=0)
     #calculate z-scores
@@ -169,7 +164,7 @@ def Master(start, end):
     for k in range(start, end):
         i = k - start
         print(i)
-        x, y, e, fidx = SEDinit(filled, i)
+        x, y, e= SEDinit(filled, i)
         not_x = [wave for wave in wav if wave not in x]
         x = np.log10(x)
         not_x = np.log10(np.array(not_x))
